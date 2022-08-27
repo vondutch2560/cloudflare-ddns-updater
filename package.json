@@ -1,0 +1,25 @@
+{
+  "name": "cloudflare-ddns-updater",
+  "version": "1.0.0",
+  "description": "Update DDNS cloudflare For Raspberry",
+  "main": "index.js",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^18.7.13",
+    "@typescript-eslint/eslint-plugin": "^5.35.1",
+    "@typescript-eslint/parser": "^5.35.1",
+    "eslint": "^8.22.0",
+    "eslint-config-prettier": "^8.5.0",
+    "prettier": "2.7.1",
+    "typescript": "^4.8.2"
+  },
+  "dependencies": {
+    "axios": "^0.27.2",
+    "dotenv": "^16.0.1"
+  },
+  "scripts": {
+    "dev": "yarn tsc && node dist/index.js",
+    "build": "yarn tsc",
+    "start": "node dist/index.js"
+  }
+}
