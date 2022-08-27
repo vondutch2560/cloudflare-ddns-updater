@@ -108,17 +108,17 @@ async function readLocalFile(): Promise<LocalData | undefined> {
   }
 }
 
-async function main() {
-  console.log('main run');
+async function main(countLog: number) {
+  console.log(`[${getTime()}] - count loop: ${countLog}`);
   const currentIp: string = await getIpv4(process.env.API_IPV4);
   const localData: LocalData | undefined = await readLocalFile();
 
-  if (localData !== undefined && localData.ip === currentIp) setTimeout(main, 600000);
+  if (localData !== undefined && localData.ip === currentIp) setTimeout(main, 600000, ++countLog);
   else {
     pushIPtoPI3(currentIp);
     handleCloudflare(currentIp);
-    setTimeout(main, 10000);
+    setTimeout(main, 10000, ++countLog);
   }
 }
 
-main();
+main(1);
