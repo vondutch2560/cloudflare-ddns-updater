@@ -4,7 +4,6 @@ import { readFile, writeFile } from 'fs/promises';
 import { existsSync, mkdirSync } from 'fs';
 import { LocalData, Zone, DnsRecord } from './interface';
 import { getTime, logAndExit, sleep } from './utils';
-import { exit } from 'process';
 
 const headers = {
   'X-Auth-Email': process.env.CF_EMAIL,
