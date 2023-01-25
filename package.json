@@ -18,8 +18,8 @@
     "dotenv": "^16.0.1"
   },
   "scripts": {
-    "dev": "yarn tsc && node dist/index.js",
-    "build": "yarn tsc",
+    "dev": "tsc && node dist/index.js",
+    "build": "tsc",
     "start": "node dist/index.js"
   }
 }

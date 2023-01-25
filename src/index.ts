@@ -1,31 +1,45 @@
 import 'dotenv/config';
 import axios from 'axios';
 import { readFile, writeFile } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { LocalData, Zone, DnsRecord } from './interface';
 import { getTime, logAndExit, sleep } from './utils';
+import { exit } from 'process';
 
 const headers = {
   'X-Auth-Email': process.env.CF_EMAIL,
   'X-Auth-Key': process.env.CF_API_KEY,
-  'Content-Type': ' application/json'
+  'Content-Type': ' application/json',
 };
 
-async function writeLocalFile(ip: string, Pi3Status: number): Promise<LocalData> {
-  const time = getTime();
-  const dataWrite = { ip, time, Pi3Status };
+function genDataLocal(countLoop: number): LocalData {
+  return {
+    ip: '0.0.0.0',
+    time: getTime(),
+    pi3Status: 0,
+    countLoop,
+  };
+}
+
+async function writeLocalFile(
+  ip: string,
+  pi3Status: number,
+  countLoop: number
+): Promise<LocalData> {
+  const time: string = getTime();
+  const dataWrite = { ip, time, pi3Status, countLoop };
   try {
-    await writeFile(process.env.PATH_MYIP, JSON.stringify(dataWrite));
+    await writeFile('./static/myip.txt', JSON.stringify(dataWrite));
   } catch (error) {
     await logAndExit('Error Function writeLocalFile in index.js', JSON.stringify(error));
   }
   return dataWrite;
 }
 
-async function pushIPtoPI3(currentIp: string): Promise<void> {
+async function pushIPtoPI3(currentIp: string, countLoop: number): Promise<void> {
   try {
     const res = await axios.get(`${process.env.URL_PI3}?ip=${currentIp}`);
-    await writeLocalFile(currentIp, res.status);
+    await writeLocalFile(currentIp, res.status, countLoop);
   } catch (err) {
     await logAndExit('Error function pushIPtoPI3', JSON.stringify(err));
   }
@@ -36,22 +50,24 @@ async function getZones(): Promise<Zone[]> {
   return res.data.result.map((zone: Zone) => {
     return { id: zone.id, name: zone.name };
   });
+  // Zones này là domain chính, không phải sub-domain
 }
 
 async function getDnsRecords(zone: Zone): Promise<DnsRecord> {
   const res = await axios(`${process.env.CF_ENDPOINT}zones/${zone.id}/dns_records`, { headers });
   const dnsRecords = res.data.result.reduce((acc: DnsRecord[], cur: DnsRecord) => {
-    if (cur.proxied === false || cur.zone_name === cur.name) {
-      acc.push({
-        id: cur.id,
-        zone_id: cur.zone_id,
-        name: cur.name,
-        type: cur.type,
-        content: cur.content,
-        proxied: cur.proxied,
-        ttl: cur.ttl
-      });
-    }
+    if (cur.type !== 'A') return acc;
+    if (/eco/gm.test(cur.name)) return acc;
+
+    acc.push({
+      id: cur.id,
+      zone_id: cur.zone_id,
+      name: cur.name,
+      type: cur.type,
+      content: cur.content,
+      proxied: cur.proxied,
+      ttl: cur.ttl,
+    });
     return acc;
   }, []);
 
@@ -66,7 +82,7 @@ async function updateDnsRecords(DnsRecords: DnsRecord[], currentIp: string) {
       type: DnsRecords[idx].type,
       ttl: DnsRecords[idx].ttl,
       proxied: DnsRecords[idx].proxied,
-      content: currentIp
+      content: currentIp,
     };
     try {
       const res = await axios({ method: 'PUT', url, headers, data });
@@ -75,7 +91,7 @@ async function updateDnsRecords(DnsRecords: DnsRecord[], currentIp: string) {
     } catch (error) {
       await logAndExit('Error in function updateDnsRecords in index.js', JSON.stringify(error));
     }
-    console.log(`update ${idx} done!`, url, data);
+    // console.log(`update ${idx} done!`, url, data);
     await sleep(2000);
   }
 }
@@ -83,8 +99,9 @@ async function updateDnsRecords(DnsRecords: DnsRecord[], currentIp: string) {
 async function handleCloudflare(currentIp: string) {
   const zones = await getZones();
   const dnsRecords = await Promise.all(zones.map(async (zone) => await getDnsRecords(zone)));
+
   await updateDnsRecords(dnsRecords.flat(), currentIp);
-  console.log('Update DDNS Cloudflare successful!');
+  console.log(`Update DDNS Cloudflare with ip ${currentIp} successful!\n`);
 }
 
 async function getIpv4(url: string): Promise<string> {
@@ -92,33 +109,38 @@ async function getIpv4(url: string): Promise<string> {
   return data;
 }
 
-async function readLocalFile(): Promise<LocalData | undefined> {
-  const isExistLocalFile = existsSync(process.env.PATH_MYIP);
-  if (isExistLocalFile) {
-    try {
-      const data: string = await readFile(process.env.PATH_MYIP, 'utf8');
-      const dataParse: LocalData = JSON.parse(data);
-      return dataParse;
-    } catch (error) {
-      await logAndExit('Error Function writeLocalFile in index.js', JSON.stringify(error));
-    }
-  } else {
-    const dataSample = await writeLocalFile('0.0.0.0', 0);
-    return dataSample;
+async function readLocalFile(countLoop: number): Promise<LocalData> {
+  try {
+    const data: string = await readFile('./static/myip.txt', 'utf8');
+    const dataParse: LocalData = JSON.parse(data);
+    return dataParse;
+  } catch (error) {
+    await logAndExit('Error Function writeLocalFile in index.js', JSON.stringify(error));
+    return genDataLocal(countLoop);
   }
 }
 
-async function main(countLog: number) {
-  console.log(`[${getTime()}] - count loop: ${countLog}`);
-  const currentIp: string = await getIpv4(process.env.API_IPV4);
-  const localData: LocalData | undefined = await readLocalFile();
-
-  if (localData !== undefined && localData.ip === currentIp) setTimeout(main, 600000, ++countLog);
-  else {
-    pushIPtoPI3(currentIp);
-    handleCloudflare(currentIp);
-    setTimeout(main, 10000, ++countLog);
+async function init(countLoop: number): Promise<void> {
+  if (!existsSync('./static/myip.txt')) {
+    mkdirSync('./static');
+    await writeLocalFile('0.0.0.0', 0, countLoop);
   }
+}
+
+async function loopCheck(countLoop: number): Promise<void> {
+  const currentIp: string = await getIpv4(process.env.API_IPV4);
+  const localData: LocalData = await readLocalFile(countLoop);
+  if (localData.ip === currentIp) setTimeout(loopCheck, 600000, ++countLoop);
+  else {
+    pushIPtoPI3(currentIp, countLoop);
+    handleCloudflare(currentIp);
+    setTimeout(loopCheck, 10000, ++countLoop);
+  }
+}
+
+async function main(countLoop: number) {
+  await init(countLoop);
+  await loopCheck(countLoop);
 }
 
 main(1);

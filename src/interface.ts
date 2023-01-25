@@ -1,7 +1,8 @@
 interface LocalData {
   ip: string;
   time: string;
-  Pi3Status: number;
+  pi3Status: number;
+  countLoop: number;
 }
 
 interface Zone {

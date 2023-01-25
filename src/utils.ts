@@ -27,7 +27,7 @@ async function createPath(dir: string): Promise<void> {
 
 async function logAndExit(errTitle: string, errMsg: string, errCode = 0): Promise<never> {
   console.error(errTitle);
-  await appendFile(process.env.ERROR_LOG, `[${getTime()}] - ${errMsg}\n`);
+  await appendFile('./static/error.log', `[${getTime()}] - ${errMsg}\n`);
   process.exit(errCode);
 }
 
